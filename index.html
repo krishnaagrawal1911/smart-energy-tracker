@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Energy & IoT Power Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 24px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .header h1 { font-size: 24px; font-weight: 700; color: #38bdf8; }
+    .badge {
+      background: #065f46;
+      color: #34d399;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .badge.overload {
+      background: #7f1d1d;
+      color: #f87171;
+      animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse { from { opacity: 0.7; } to { opacity: 1; } }
+
+    .grid-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 20px;
+      border-radius: 12px;
+    }
+    .card-title { font-size: 13px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; font-weight: 600; }
+    .card-value { font-size: 28px; font-weight: 700; color: #f8fafc; }
+    .card-unit { font-size: 14px; font-weight: 500; color: #64748b; margin-left: 4px; }
+
+    .main-section {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 900px) {
+      .main-section { grid-template-columns: 1fr; }
+    }
+
+    .chart-container {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 20px;
+      border-radius: 12px;
+      height: 380px;
+    }
+
+    .appliances-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 20px;
+      border-radius: 12px;
+    }
+    .appliances-card h2 { font-size: 16px; margin-bottom: 16px; color: #e2e8f0; }
+
+    .app-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #334155;
+    }
+    .app-item:last-child { border-bottom: none; }
+    .app-info .name { font-weight: 600; font-size: 14px; }
+    .app-info .metrics { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+    .toggle-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .toggle-btn.btn-on { background: #0284c7; color: white; }
+    .toggle-btn.btn-off { background: #475569; color: #cbd5e1; }
+    .toggle-btn:hover { opacity: 0.9; }
+
+    .alert-banner {
+      display: none;
+      background: #ef4444;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>⚡ Smart IoT Power & Energy Tracker</h1>
+      <p style="color: #94a3b8; font-size: 13px; margin-top: 4px;">Live Telemetry & Electrical Load Analysis System</p>
+    </div>
+    <div id="statusBadge" class="badge">SYSTEM NORMAL</div>
+  </div>
+
+  <div id="alertBanner" class="alert-banner">
+    ⚠️ Warning: Total power demand exceeded safe threshold of 3.0 kW! Peak shaving recommended.
+  </div>
+
+  <div class="grid-stats">
+    <div class="card">
+      <div class="card-title">Total Active Load</div>
+      <div class="card-value"><span id="valTotalPower">0</span><span class="card-unit">W</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Total Power (kW)</div>
+      <div class="card-value"><span id="valTotalKW">0.00</span><span class="card-unit">kW</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Grid Voltage</div>
+      <div class="card-value"><span id="valVoltage">230</span><span class="card-unit">V RMS</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Estimated Cost</div>
+      <div class="card-value">₹<span id="valCost">0.00</span><span class="card-unit">/ hr</span></div>
+    </div>
+  </div>
+
+  <div class="main-section">
+    <div class="chart-container">
+      <canvas id="powerChart"></canvas>
+    </div>
+    <div class="appliances-card">
+      <h2>Appliance Load Controls</h2>
+      <div id="appliancesList">Loading telemetry...</div>
+    </div>
+  </div>
+
+  <script>
+    // Built-in Telemetry Engine for GitHub Pages (Self-contained)
+    let appliances = [
+      { id: 'app-1', name: 'Smart Air Conditioner', status: 'ON', basePower: 1450, currentPower: 1450, voltage: 230, powerFactor: 0.95 },
+      { id: 'app-2', name: 'Induction Cooktop', status: 'ON', basePower: 1200, currentPower: 1200, voltage: 230, powerFactor: 0.98 },
+      { id: 'app-3', name: 'Refrigerator (Inverter)', status: 'ON', basePower: 180, currentPower: 180, voltage: 230, powerFactor: 0.88 },
+      { id: 'app-4', name: 'EV Home Charger', status: 'OFF', basePower: 3300, currentPower: 0, voltage: 230, powerFactor: 0.99 },
+      { id: 'app-5', name: 'Workstation Setup', status: 'ON', basePower: 220, currentPower: 220, voltage: 230, powerFactor: 0.92 }
+    ];
+
+    const UNIT_RATE_INR = 7.5;
+    let chart;
+    const historyData = { labels: [], data: [] };
+
+    function calculateTelemetry() {
+      appliances = appliances.map(app => {
+        if (app.status === 'OFF') {
+          return { ...app, currentPower: 0, current: 0 };
+        }
+        const fluctuation = 1 + (Math.random() * 0.14 - 0.07);
+        const voltageFluc = 230 + (Math.random() * 8 - 4);
+        const activePower = Math.round(app.basePower * fluctuation);
+        const current = +(activePower / (voltageFluc * app.powerFactor)).toFixed(2);
+        
+        return {
+          ...app,
+          currentPower: activePower,
+          voltage: +voltageFluc.toFixed(1),
+          current: current
+        };
+      });
+
+      const totalPowerW = appliances.reduce((sum, a) => sum + a.currentPower, 0);
+      const totalPowerKW = +(totalPowerW / 1000).toFixed(3);
+      const estimatedHourlyCost = +(totalPowerKW * UNIT_RATE_INR).toFixed(2);
+      const averageVoltage = +(appliances.reduce((s, a) => s + a.voltage, 0) / appliances.length).toFixed(1);
+      const isOverload = totalPowerW > 3000;
+
+      return { totalPowerW, totalPowerKW, estimatedHourlyCost, averageVoltage, isOverload, appliances };
+    }
+
+    function initChart() {
+      const ctx = document.getElementById('powerChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: historyData.labels,
+          datasets: [{
+            label: 'Total Real-Time Load (Watts)',
+            data: historyData.data,
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, beginAtZero: true }
+          },
+          plugins: {
+            legend: { labels: { color: '#f8fafc' } }
+          }
+        }
+      });
+    }
+
+    function updateDashboard() {
+      const data = calculateTelemetry();
+
+      document.getElementById('valTotalPower').innerText = data.totalPowerW;
+      document.getElementById('valTotalKW').innerText = data.totalPowerKW;
+      document.getElementById('valVoltage').innerText = data.averageVoltage;
+      document.getElementById('valCost').innerText = data.estimatedHourlyCost;
+
+      const badge = document.getElementById('statusBadge');
+      const alert = document.getElementById('alertBanner');
+      if (data.isOverload) {
+        badge.className = 'badge overload';
+        badge.innerText = 'HIGH LOAD ALERT';
+        alert.style.display = 'block';
+      } else {
+        badge.className = 'badge';
+        badge.innerText = 'SYSTEM NORMAL';
+        alert.style.display = 'none';
+      }
+
+      const timeStr = new Date().toLocaleTimeString().split(' ')[0];
+      historyData.labels.push(timeStr);
+      historyData.data.push(data.totalPowerW);
+      if (historyData.labels.length > 12) {
+        historyData.labels.shift();
+        historyData.data.shift();
+      }
+      chart.update();
+
+      renderAppliances(data.appliances);
+    }
+
+    function renderAppliances(list) {
+      const container = document.getElementById('appliancesList');
+      container.innerHTML = list.map(app => `
+        <div class="app-item">
+          <div class="app-info">
+            <div class="name">${app.name}</div>
+            <div class="metrics">${app.currentPower} W | ${app.voltage} V | PF: ${app.powerFactor}</div>
+          </div>
+          <button class="toggle-btn ${app.status === 'ON' ? 'btn-on' : 'btn-off'}" onclick="toggleAppliance('${app.id}')">
+            ${app.status}
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function toggleAppliance(id) {
+      const target = appliances.find(a => a.id === id);
+      if (target) {
+        target.status = target.status === 'ON' ? 'OFF' : 'ON';
+        target.currentPower = target.status === 'ON' ? target.basePower : 0;
+        updateDashboard();
+      }
+    }
+
+    initChart();
+    updateDashboard();
+    setInterval(updateDashboard, 2000);
+  </script>
+</body>
+</html>
