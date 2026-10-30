@@ -58,4 +58,4 @@ http://localhost:3000
 ---
 
 ## 👨‍💻 Author
-- **Krishan** - B.Tech in Electrical Engineering with Minor in CSE, MANIT Bhopal
+- **Krishna**- MANIT Bhopal
